@@ -23,6 +23,8 @@ export function authenticationMiddleware(
 		}
 
 		const { 'x-user-id': userId, 'x-auth-token': authToken } = req.headers;
+		console.log('userId', userId);
+		console.log('authToken', authToken);
 
 		if (userId && authToken) {
 			req.user = (await Users.findOneByIdAndLoginToken(userId as string, hashLoginToken(authToken as string))) || undefined;

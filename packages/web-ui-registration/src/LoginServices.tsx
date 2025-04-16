@@ -15,6 +15,7 @@ const LoginServices = ({
 }): ReactElement | null => {
 	const { t } = useTranslation();
 	const services = useLoginServices();
+	console.log('LoginServices', services);
 	const showFormLogin = useSetting('Accounts_ShowFormLogin');
 
 	if (services.length === 0) {

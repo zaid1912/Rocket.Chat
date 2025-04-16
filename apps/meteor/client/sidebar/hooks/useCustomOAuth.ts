@@ -10,6 +10,7 @@ export const useCustomOAuth = () => {
 				if (!('custom' in service && service.custom)) {
 					continue;
 				}
+				console.log('CustomOAuth', service);
 
 				new CustomOAuth(service.service, {
 					serverURL: service.serverURL,

@@ -70,6 +70,9 @@ export class CustomOAuth {
 		if (!Match.test(options.accessTokenParam, String)) {
 			options.accessTokenParam = 'access_token';
 		}
+		console.log(`CustomOAuth: ${this.name} - ${options.serverURL}${options.tokenPath}`);
+		console.log(`CustomOAuth: ${this.name} - ${options.serverURL}${options.identityPath}`);
+		console.log(`CustomOAuth: ${this.name} - ${options.serverURL}${options.accessTokenParam}`);
 
 		this.serverURL = options.serverURL;
 		this.tokenPath = options.tokenPath;
@@ -86,6 +89,8 @@ export class CustomOAuth {
 		this.rolesClaim = options.rolesClaim || 'roles';
 		this.accessTokenParam = options.accessTokenParam;
 		this.channelsAdmin = options.channelsAdmin || 'rocket.cat';
+
+		console.log('configurations: ', this);
 
 		if (this.identityTokenSentVia == null || this.identityTokenSentVia === 'default') {
 			this.identityTokenSentVia = this.tokenSentVia;
@@ -105,6 +110,7 @@ export class CustomOAuth {
 	}
 
 	async getAccessToken(query) {
+		console.log('CustomOAuth: queryyyyy', query);
 		const config = await ServiceConfiguration.configurations.findOneAsync({ service: this.name });
 		if (!config) {
 			throw new Accounts.ConfigError();
@@ -123,6 +129,13 @@ export class CustomOAuth {
 			grant_type: 'authorization_code',
 			state: query.state,
 		});
+
+		console.log('headers', headers);
+		console.log('body params', params);
+
+		// console.log('this.tokenPath', this.tokenPath);
+		// console.log('this.tokenSentVia', this.tokenSentVia);
+		// console.log('this.identityTokenSentVia', this.identityTokenSentVia);
 
 		// Only send clientID / secret once on header or payload.
 		if (this.tokenSentVia === 'header') {
@@ -173,12 +186,14 @@ export class CustomOAuth {
 
 		try {
 			const request = await fetch(`${this.identityPath}`, { method: 'GET', headers, params });
+			console.log('request', request);
 
 			if (!request.ok) {
 				throw new Error(request.statusText);
 			}
 
 			const response = await request.json();
+			console.log('response from fetch identity path', response);
 
 			logger.debug({ msg: 'Identity response', response });
 
@@ -193,7 +208,9 @@ export class CustomOAuth {
 		const self = this;
 		OAuth.registerService(this.name, 2, null, async (query) => {
 			const response = await self.getAccessToken(query);
+			console.log('CustomOAuth: getAccessToken', response);
 			const identity = await self.getIdentity(response.access_token, query);
+			console.log('CustomOAuth: getIdentity', identity);
 
 			const serviceData = {
 				_OAuthCustom: true,
@@ -202,6 +219,8 @@ export class CustomOAuth {
 				idToken: response.id_token,
 				expiresAt: +new Date() + 1000 * parseInt(response.expires_in, 10),
 			};
+
+			console.log('CustomOAuth: serviceData', serviceData);
 
 			// only set the token in serviceData if it's there. this ensures
 			// that we don't lose old ones (since we only get this on the first
@@ -379,6 +398,7 @@ export class CustomOAuth {
 				void notifyOnUserChange({ clientAction: 'updated', id: user._id, diff: update });
 			}
 		});
+		console.log('BeforeUpdateOrCreateUserFromExternalService', BeforeUpdateOrCreateUserFromExternalService);
 
 		Accounts.validateNewUser((user) => {
 			if (!user.services || !user.services[this.name] || !user.services[this.name].id) {
@@ -436,9 +456,45 @@ export class CustomOAuth {
 	}
 }
 
+async function captureKeycloakAuthResult(userId) {
+	try {
+		// Get the full user object
+		const fullUser = await Users.findOneById(userId);
+
+		if (!fullUser) {
+			console.error('User not found with ID:', userId);
+			return null;
+		}
+
+		// Generate a Meteor login token for this user
+		const stampedToken = Accounts._generateStampedLoginToken();
+		const hashStampedToken = Accounts._hashStampedToken(stampedToken);
+
+		await Users.update({ _id: userId }, { $push: { 'services.resume.loginTokens': hashStampedToken } });
+
+		// Create the result object with user details and token
+		const authResult = {
+			userId: userId,
+			username: fullUser.username,
+			name: fullUser.name,
+			email: fullUser.emails && fullUser.emails[0] ? fullUser.emails[0].address : null,
+			token: stampedToken.token,
+			tokenExpires: new Date(stampedToken.when.getTime() + 3600 * 1000 * 24 * 7), // Token expires in 7 days (just an example)
+			keycloakAuth: true,
+		};
+
+		console.log('Keycloak Authentication Result:', authResult);
+
+		return authResult;
+	} catch (error) {
+		console.error('Error generating authentication result:', error);
+		return null;
+	}
+}
 const { updateOrCreateUserFromExternalService } = Accounts;
 
 Accounts.updateOrCreateUserFromExternalService = async function (...args /* serviceName, serviceData, options*/) {
+	console.log('updateOrCreateUserFromExternalService', args);
 	for await (const hook of BeforeUpdateOrCreateUserFromExternalService) {
 		await hook.apply(this, args);
 	}
@@ -460,6 +516,13 @@ Accounts.updateOrCreateUserFromExternalService = async function (...args /* serv
 		serviceName,
 		user: fullUser,
 	});
+
+	console.log('user', user);
+	if (serviceName === 'keycloak') {
+		const authResult = await captureKeycloakAuthResult(user.userId);
+		console.log('authResult', authResult);
+		// You could do something with authResult here if needed
+	}
 
 	return user;
 };

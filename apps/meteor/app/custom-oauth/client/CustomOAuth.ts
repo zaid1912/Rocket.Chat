@@ -38,7 +38,13 @@ export class CustomOAuth implements IOAuthProvider {
 
 		this.configure(options);
 
-		Accounts.oauth.registerService(this.name);
+		// Check if service is already registered
+		try {
+			Accounts.oauth.registerService(this.name);
+		} catch (error) {
+			// Service already registered, just configure it
+			console.log(`Service ${this.name} already registered, reconfiguring...`);
+		}
 
 		this.configureLogin();
 	}
@@ -69,21 +75,56 @@ export class CustomOAuth implements IOAuthProvider {
 			this.authorizePath = this.serverURL + this.authorizePath;
 		}
 	}
+	captureLoginToken() {
+		const token = localStorage.getItem('Meteor.loginToken');
+		const tokenExpires = localStorage.getItem('Meteor.loginTokenExpires');
+		
+		if (token && this.name === 'keycloak') {
+		  // Store or use the token
+		  console.log('Captured Keycloak login token:', token);
+		  
+		  // You can call a server method to store this token if needed
+		  Meteor.call('keycloak:recordLoginToken', {
+			token,
+			expires: tokenExpires,
+			provider: this.name
+		  });
+		}
+		
+		return token;
+	  }
 
 	configureLogin() {
 		const loginWithService = `loginWith${capitalize(String(this.name || ''))}` as const;
-
+	  
 		const loginWithOAuthTokenAndTOTP = createOAuthTotpLoginMethod(this);
-
+	  
 		const loginWithOAuthToken = async (options?: Meteor.LoginWithExternalServiceOptions, callback?: LoginCallback) => {
-			const credentialRequestCompleteCallback = Accounts.oauth.credentialRequestCompleteHandler(callback);
-			await this.requestCredential(options, credentialRequestCompleteCallback);
+		  const originalCallback = callback;
+		  
+		  // Create a wrapper callback that will capture the token after successful login
+		  const wrappedCallback: LoginCallback = (error?: Error) => {
+			if (!error && this.name === 'keycloak') {
+			  // Capture the token after successful login
+			  setTimeout(() => this.captureLoginToken(), 500); // Small delay to ensure token is in localStorage
+			}
+			
+			// Call the original callback
+			if (originalCallback) originalCallback(error);
+		  };
+		  
+		  const credentialRequestCompleteCallback = Accounts.oauth.credentialRequestCompleteHandler(wrappedCallback);
+		  await this.requestCredential(options, credentialRequestCompleteCallback);
 		};
-
+		
+		console.log('loginWithOAuthToken', loginWithOAuthToken);
+	  
 		(Meteor as any)[loginWithService] = (options: Meteor.LoginWithExternalServiceOptions, callback: LoginCallback) => {
-			overrideLoginMethod(loginWithOAuthToken, [options], callback, loginWithOAuthTokenAndTOTP);
+		  overrideLoginMethod(loginWithOAuthToken, [options], callback, loginWithOAuthTokenAndTOTP);
 		};
-	}
+	  }
+
+	
 
 	async requestCredential(
 		options: Meteor.LoginWithExternalServiceOptions = {},

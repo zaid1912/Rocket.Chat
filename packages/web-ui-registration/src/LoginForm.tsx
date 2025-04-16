@@ -85,6 +85,7 @@ export const LoginForm = ({ setLoginRoute }: { setLoginRoute: DispatchLoginRoute
 
 	const loginMutation = useMutation({
 		mutationFn: (formData: { usernameOrEmail: string; password: string }) => {
+			console.log('login', formData);
 			return login(formData.usernameOrEmail, formData.password);
 		},
 		onError: (error: any) => {

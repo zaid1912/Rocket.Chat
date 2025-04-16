@@ -45,16 +45,19 @@ const AuthenticationProvider = ({ children }: AuthenticationProviderProps): Reac
 					});
 				}),
 			loginWithService: <T extends LoginServiceConfiguration>(serviceConfig: T): (() => Promise<true>) => {
+				console.log('loginWithService', serviceConfig);
 				const loginMethods: Record<string, string | undefined> = {
 					'meteor-developer': 'MeteorDeveloperAccount',
 				};
 
 				const { service: serviceName } = serviceConfig;
+				console.log('serviceName', serviceName);
 				const clientConfig = ('clientConfig' in serviceConfig && serviceConfig.clientConfig) || {};
 
 				const loginWithService = `loginWith${loginMethods[serviceName] || capitalize(String(serviceName || ''))}`;
 
 				const method: (config: unknown, cb: (error: any) => void) => Promise<true> = (Meteor as any)[loginWithService] as any;
+				console.log('loginWithServiceeeee', loginWithService, method);
 
 				if (!method) {
 					return () => Promise.reject(new Error('Login method not found'));
